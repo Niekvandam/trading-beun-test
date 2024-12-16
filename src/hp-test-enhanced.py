@@ -1,7 +1,7 @@
 import pandas as pd
 import optuna
 from indicators import calculate_rsi, calculate_bollinger_bands, calculate_macd, calculate_atr
-from utils import precompute_data, collect_all_indicator_params, create_numba_params
+from utils import precompute_data, collect_all_indicator_params, create_numba_params, get_random_slices
 from strategy_enhanced import trading_strategy_enhanced
 from walk_forward import walk_forward_splits
 import numpy as np
