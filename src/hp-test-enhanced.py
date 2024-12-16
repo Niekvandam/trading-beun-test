@@ -15,24 +15,14 @@ data['timestamp'] = pd.to_datetime(data['timestamp'], unit='s')
 data.set_index('timestamp', inplace=True)
 data.sort_index(inplace=True)
 
-def run_walk_forward_backtest(data, params, n_splits=4):
+def run_walk_forward_backtest(data, params, precomputed_data, n_splits=4):
     folds = walk_forward_splits(data, n_splits=n_splits, train_size=0.7)
     fold_results = []
     
     for i, (train_data, test_data) in enumerate(folds):
-        # Precompute indicators
-        indicator_params = collect_indicator_params_from_params(params)
-        timeframe = params.get('timeframe', '1H')
-        support_resistance_timeframe = params.get('support_resistance_timeframe', '1H')
-        support_resistance_window = params.get('support_resistance_window', 30)
-        data_dict = precompute_data(
-            test_data, 
-            [timeframe], 
-            indicator_params, 
-            support_resistance_timeframe, 
-            support_resistance_window
-        )
-        test_res = data_dict[timeframe]
+        # Use precomputed data instead of recalculating
+        data_dict = precomputed_data[i]
+        test_res = data_dict['test']
 
         close = test_res['close'].values
         high = test_res['high'].values
@@ -57,7 +47,7 @@ def run_walk_forward_backtest(data, params, n_splits=4):
         # Retrieve support and resistance levels
         support_levels = data_dict['support_levels']
         resistance_levels = data_dict['resistance_levels']
-        
+
         initial_condition_flags = (0.0, 0.0)
 
         final_balance, trades = trading_strategy_enhanced(
@@ -147,7 +137,7 @@ def calculate_metrics(fold_results):
 
     return metrics
 
-def objective(trial):
+def objective(trial, precomputed_data):
     # Suggest parameters as before
     sma_short = trial.suggest_int('sma_short', 5, 50, step=5)
     sma_long = trial.suggest_int('sma_long', 50, 200, step=10)
@@ -221,7 +211,7 @@ def objective(trial):
         'support_resistance_window': support_resistance_window
     }
 
-    fold_results = run_walk_forward_backtest(data, params, n_splits=4)
+    fold_results = run_walk_forward_backtest(data, params, precomputed_data)
     
     # Calculate metrics
     metrics = calculate_metrics(fold_results)
@@ -239,8 +229,39 @@ if __name__ == '__main__':
     study = optuna.create_study(direction='maximize')
     n_jobs = multiprocessing.cpu_count() - 1
 
+    # Precompute indicators for all walk-forward splits
+    n_splits = 4
+    folds = walk_forward_splits(data, n_splits=n_splits, train_size=0.7)
+    precomputed_data = []
+    for train_data, test_data in folds:
+        indicator_params = collect_indicator_params_from_params({
+            # Define a default or representative parameter set for precomputing
+            'sma_short': 20,
+            'sma_long': 50,
+            'rsi_period': 14,
+            'bb_period': 20,
+            'bb_num_std': 2.0,
+            'macd_fast': 12,
+            'macd_slow': 26,
+            'macd_signal': 9,
+            'ema_period': 20,
+            'stoch_k_period': 14,
+            'stoch_d_period': 3,
+            'atr_period': 14,
+            'support_resistance_timeframe': '1h',
+            'support_resistance_window': 30
+        })
+        data_dict = precompute_data(
+            test_data, 
+            [indicator_params['sma_periods'][0]],  # Assuming single timeframe for simplicity
+            indicator_params, 
+            '1h', 
+            30
+        )
+        precomputed_data.append(data_dict)
+
     try:
-        study.optimize(objective, n_trials=5000, n_jobs=n_jobs)
+        study.optimize(lambda trial: objective(trial, precomputed_data), n_trials=5000, n_jobs=n_jobs)
     except KeyboardInterrupt:
         print("KeyboardInterrupt detected! Saving the best parameters so far...")
     finally:
@@ -249,7 +270,7 @@ if __name__ == '__main__':
         print(study.best_params)
         
         best_params = study.best_params
-        fold_results = run_walk_forward_backtest(data, best_params, n_splits=4)
+        fold_results = run_walk_forward_backtest(data, best_params, precomputed_data, n_splits=n_splits)
         final_metrics = calculate_metrics(fold_results)
         print("Final Metrics:")
         print(final_metrics)

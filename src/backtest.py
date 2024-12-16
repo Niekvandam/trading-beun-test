@@ -24,32 +24,87 @@ def backtest_strategy(data_dict, param_grid, timeframes, num_slices=5, slice_len
             resampled_data = data_dict[timeframe]
             slices = get_random_slices(resampled_data, num_slices=num_slices, slice_length=slice_length)
             
-            for params in param_combinations:  # use the precomputed list directly
+            # Pre-extract necessary columns to avoid repeated access
+            close_dict = {}
+            high_dict = {}
+            low_dict = {}
+            sma_short_dict = {}
+            sma_long_dict = {}
+            rsi_dict = {}
+            upper_bb_dict = {}
+            lower_bb_dict = {}
+            macd_line_dict = {}
+            signal_line_dict = {}
+            ema_dict = {}
+            atr_dict = {}
+            stoch_k_dict = {}
+            stoch_d_dict = {}
+            support_levels = data_dict['support_levels']
+            resistance_levels = data_dict['resistance_levels']
+
+            # Pre-extract columns for all parameter combinations
+            for params in param_combinations:
+                sma_short_key = f'sma_{params["sma_periods"][0]}'
+                sma_long_key = f'sma_{params["sma_periods"][1]}'
+                rsi_key = f'rsi_{params["rsi_period"]}'
+                num_std_str = f"{params['bb_num_std']:.1f}"
+                upper_bb_key = f'upper_bb_{params["bb_period"]}_{num_std_str}'
+                lower_bb_key = f'lower_bb_{params["bb_period"]}_{num_std_str}'
+                macd_key = f'macd_line_{params["macd_fast"]}_{params["macd_slow"]}_{params["macd_signal"]}'
+                signal_key = f'signal_line_{params["macd_fast"]}_{params["macd_slow"]}_{params["macd_signal"]}'
+                ema_key = f'ema_{params["ema_period"]}'
+                atr_key = f'atr_{params["atr_period"]}'
+                stoch_k_key = f'stoch_k_{params["stoch_k_period"]}_{params["stoch_d_period"]}'
+                stoch_d_key = f'stoch_d_{params["stoch_k_period"]}_{params["stoch_d_period"]}'
+
+                if sma_short_key not in sma_short_dict:
+                    sma_short_dict[sma_short_key] = resampled_data[sma_short_key].values
+                if sma_long_key not in sma_long_dict:
+                    sma_long_dict[sma_long_key] = resampled_data[sma_long_key].values
+                if rsi_key not in rsi_dict:
+                    rsi_dict[rsi_key] = resampled_data[rsi_key].values
+                if upper_bb_key not in upper_bb_dict:
+                    upper_bb_dict[upper_bb_key] = resampled_data[upper_bb_key].values
+                if lower_bb_key not in lower_bb_dict:
+                    lower_bb_dict[lower_bb_key] = resampled_data[lower_bb_key].values
+                if macd_key not in macd_line_dict:
+                    macd_line_dict[macd_key] = resampled_data[macd_key].values
+                if signal_key not in signal_line_dict:
+                    signal_line_dict[signal_key] = resampled_data[signal_key].values
+                if ema_key not in ema_dict:
+                    ema_dict[ema_key] = resampled_data[ema_key].values
+                if atr_key not in atr_dict:
+                    atr_dict[atr_key] = resampled_data[atr_key].values
+                if stoch_k_key not in stoch_k_dict:
+                    stoch_k_dict[stoch_k_key] = resampled_data[stoch_k_key].values
+                if stoch_d_key not in stoch_d_dict:
+                    stoch_d_dict[stoch_d_key] = resampled_data[stoch_d_key].values
+
+            for params in param_combinations:
                 numba_params = create_numba_params(params)
                 total_roi = 0
                 total_trades = 0
 
+                sma_short = sma_short_dict[f'sma_{params["sma_periods"][0]}']
+                sma_long = sma_long_dict[f'sma_{params["sma_periods"][1]}']
+                rsi = rsi_dict[f'rsi_{params["rsi_period"]}']
+                upper_bb = upper_bb_dict[f'upper_bb_{params["bb_period"]}_{params["bb_num_std"]:.1f}']
+                lower_bb = lower_bb_dict[f'lower_bb_{params["bb_period"]}_{params["bb_num_std"]:.1f}']
+                macd_line = macd_line_dict[f'macd_line_{params["macd_fast"]}_{params["macd_slow"]}_{params["macd_signal"]}']
+                signal_line = signal_line_dict[f'signal_line_{params["macd_fast"]}_{params["macd_slow"]}_{params["macd_signal"]}']
+                ema = ema_dict[f'ema_{params["ema_period"]}']
+                atr = atr_dict[f'atr_{params["atr_period"]}']
+                stoch_k = stoch_k_dict[f'stoch_k_{params["stoch_k_period"]}_{params["stoch_d_period"]}']
+                stoch_d = stoch_d_dict[f'stoch_d_{params["stoch_k_period"]}_{params["stoch_d_period"]}']
+
                 for data_slice in slices:
                     data_slice = data_slice.dropna()
 
-                    # Extract necessary columns
-                    close = data_slice['close'].values
-                    high = data_slice['high'].values
-                    low = data_slice['low'].values
-                    sma_short = data_slice[f'sma_{params["sma_periods"][0]}'].values
-                    sma_long = data_slice[f'sma_{params["sma_periods"][1]}'].values
-                    rsi = data_slice[f'rsi_{params["rsi_period"]}'].values
-                    num_std_str = f"{params['bb_num_std']:.1f}"
-                    upper_bb = data_slice[f'upper_bb_{params["bb_period"]}_{num_std_str}'].values
-                    lower_bb = data_slice[f'lower_bb_{params["bb_period"]}_{num_std_str}'].values
-                    macd_line = data_slice[f'macd_line_{params["macd_fast"]}_{params["macd_slow"]}_{params["macd_signal"]}'].values
-                    signal_line = data_slice[f'signal_line_{params["macd_fast"]}_{params["macd_slow"]}_{params["macd_signal"]}'].values
-                    ema = data_slice[f'ema_{params["ema_period"]}'].values
-                    atr = data_slice[f'atr_{params["atr_period"]}'].values
-                    stoch_k = data_slice[f'stoch_k_{params["stoch_k_period"]}_{params["stoch_d_period"]}'].values
-                    stoch_d = data_slice[f'stoch_d_{params["stoch_k_period"]}_{params["stoch_d_period"]}'].values
-                    support_levels = data_dict['support_levels']
-                    resistance_levels = data_dict['resistance_levels']
+                    # Ensure the slice indices align with the pre-extracted arrays
+                    # (Assuming slices are contiguous and aligned)
+
+                    # Retrieve support and resistance levels
+                    # Already extracted outside the loop
 
                     # Ensure correct argument order as per the trading_strategy signature
                     final_balance, trades = trading_strategy(
@@ -100,40 +155,92 @@ def backtest_strategy_hp(data_dict, param_list, timeframes, num_slices=5, slice_
     for timeframe in timeframes:
         resampled_data = data_dict[timeframe]
         slices = get_random_slices(resampled_data, num_slices=num_slices, slice_length=slice_length)
+        # Pre-extract columns outside the param loop to avoid redundant access
+        close_all = resampled_data['close'].values
+        high_all = resampled_data['high'].values
+        low_all = resampled_data['low'].values
+        support_levels = data_dict['support_levels']
+        resistance_levels = data_dict['resistance_levels']
+
+        # Pre-extract indicators for all params
+        indicator_data = {}
+        for params in param_list:
+            sma_short_key = f'sma_{params["sma_short"]}'
+            sma_long_key = f'sma_{params["sma_long"]}'
+            rsi_key = f'rsi_{params["rsi_period"]}'
+            num_std_str = f"{params['bb_num_std']:.1f}"
+            upper_bb_key = f'upper_bb_{params["bb_period"]}_{num_std_str}'
+            lower_bb_key = f'lower_bb_{params["bb_period"]}_{num_std_str}'
+            macd_key = f'macd_line_{params["macd_fast"]}_{params["macd_slow"]}_{params["macd_signal"]}'
+            signal_key = f'signal_line_{params["macd_fast"]}_{params["macd_slow"]}_{params["macd_signal"]}'
+            ema_key = f'ema_{params["ema_period"]}'
+            atr_key = f'atr_{params["atr_period"]}'
+            stoch_k_key = f'stoch_k_{params["stoch_k_period"]}_{params["stoch_d_period"]}'
+            stoch_d_key = f'stoch_d_{params["stoch_k_period"]}_{params["stoch_d_period"]}'
+
+            if sma_short_key not in indicator_data:
+                indicator_data[sma_short_key] = resampled_data[sma_short_key].values
+            if sma_long_key not in indicator_data:
+                indicator_data[sma_long_key] = resampled_data[sma_long_key].values
+            if rsi_key not in indicator_data:
+                indicator_data[rsi_key] = resampled_data[rsi_key].values
+            if upper_bb_key not in indicator_data:
+                indicator_data[upper_bb_key] = resampled_data[upper_bb_key].values
+            if lower_bb_key not in indicator_data:
+                indicator_data[lower_bb_key] = resampled_data[lower_bb_key].values
+            if macd_key not in indicator_data:
+                indicator_data[macd_key] = resampled_data[macd_key].values
+            if signal_key not in indicator_data:
+                indicator_data[signal_key] = resampled_data[signal_key].values
+            if ema_key not in indicator_data:
+                indicator_data[ema_key] = resampled_data[ema_key].values
+            if atr_key not in indicator_data:
+                indicator_data[atr_key] = resampled_data[atr_key].values
+            if stoch_k_key not in indicator_data:
+                indicator_data[stoch_k_key] = resampled_data[stoch_k_key].values
+            if stoch_d_key not in indicator_data:
+                indicator_data[stoch_d_key] = resampled_data[stoch_d_key].values
+
         for params in param_list:
             numba_params = create_numba_params(params)
             total_roi = 0
             total_trades = 0
-            support_levels = data_dict['support_levels']
-            resistance_levels = data_dict['resistance_levels']
+
+            sma_short = indicator_data[f'sma_{params["sma_short"]}']
+            sma_long = indicator_data[f'sma_{params["sma_long"]}']
+            rsi = indicator_data[f'rsi_{params["rsi_period"]}']
+            upper_bb = indicator_data[f'upper_bb_{params["bb_period"]}_{params["bb_num_std"]:.1f}']
+            lower_bb = indicator_data[f'lower_bb_{params["bb_period"]}_{params["bb_num_std"]:.1f}']
+            macd_line = indicator_data[f'macd_line_{params["macd_fast"]}_{params["macd_slow"]}_{params["macd_signal"]}']
+            signal_line = indicator_data[f'signal_line_{params["macd_fast"]}_{params["macd_slow"]}_{params["macd_signal"]}']
+            ema = indicator_data[f'ema_{params["ema_period"]}']
+            atr = indicator_data[f'atr_{params["atr_period"]}']
+            stoch_k = indicator_data[f'stoch_k_{params["stoch_k_period"]}_{params["stoch_d_period"]}']
+            stoch_d = indicator_data[f'stoch_d_{params["stoch_k_period"]}_{params["stoch_d_period"]}']
+
             for data_slice in slices:
                 data_slice = data_slice.dropna()
                 
-                # Extract necessary data
-                close = data_slice['close'].values
-                high = data_slice['high'].values  # Include high prices
-                low = data_slice['low'].values    # Include low prices
-                sma_short = data_slice[f'sma_{params["sma_short"]}'].values
-                sma_long = data_slice[f'sma_{params["sma_long"]}'].values
-                rsi = data_slice[f'rsi_{params["rsi_period"]}'].values
-                upper_bb = data_slice[f'upper_bb_{params["bb_period"]}_{params["bb_num_std"]:.1f}'].values
-                lower_bb = data_slice[f'lower_bb_{params["bb_period"]}_{params["bb_num_std"]:.1f}'].values
-                macd_line = data_slice[f'macd_line_{params["macd_fast"]}_{params["macd_slow"]}_{params["macd_signal"]}'].values
-                signal_line = data_slice[f'signal_line_{params["macd_fast"]}_{params["macd_slow"]}_{params["macd_signal"]}'].values
-                ema = data_slice[f'ema_{params["ema_period"]}'].values
-                atr = data_slice[f'atr_{params["atr_period"]}'].values  # ATR period is variable
-                stoch_k = data_slice[f'stoch_k_{params["stoch_k_period"]}_{params["stoch_d_period"]}'].values
-                stoch_d = data_slice[f'stoch_d_{params["stoch_k_period"]}_{params["stoch_d_period"]}'].values
-
                 # Retrieve support and resistance levels
-                support_levels = data_dict['support_levels']
-                resistance_levels = data_dict['resistance_levels']
 
-                # Pass all required parameters to trading_strategy
+                # Ensure correct argument order as per the trading_strategy signature
                 final_balance, trades = trading_strategy(
-                    close, high, low, sma_short, sma_long, ema, rsi, stoch_k, stoch_d,
-                    upper_bb, lower_bb, macd_line, signal_line, atr, 
-                    support_levels, resistance_levels,
+                    close_all,
+                    high_all,
+                    low_all,
+                    sma_short,
+                    sma_long,
+                    ema,
+                    rsi,
+                    stoch_k,
+                    stoch_d,
+                    upper_bb,
+                    lower_bb,
+                    macd_line,
+                    signal_line,
+                    atr,
+                    support_levels,
+                    resistance_levels,
                     numba_params
                 )
 
