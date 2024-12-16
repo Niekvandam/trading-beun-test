@@ -219,29 +219,34 @@ def objective(trial):
 if __name__ == '__main__':
     study = optuna.create_study(direction='maximize')
     n_jobs = multiprocessing.cpu_count() - 1
-    study.optimize(objective, n_trials=50000, n_jobs=n_jobs)
-    print("Best parameters:")
-    print(study.best_params)
 
-    best_params = study.best_params
-    fold_results = run_walk_forward_backtest(data, best_params, n_splits=4)
-    final_metrics = calculate_metrics(fold_results)
-    print("Final Metrics:")
-    print(final_metrics)
+    try:
+        study.optimize(objective, n_trials=5000, n_jobs=n_jobs)
+    except KeyboardInterrupt:
+        print("KeyboardInterrupt detected! Saving the best parameters so far...")
+    finally:
+        # Save best parameters and results regardless of completion
+        print("Best parameters so far:")
+        print(study.best_params)
+        
+        best_params = study.best_params
+        fold_results = run_walk_forward_backtest(data, best_params, n_splits=4)
+        final_metrics = calculate_metrics(fold_results)
+        print("Final Metrics:")
+        print(final_metrics)
+        
+        # Get the top 100 best trials
+        sorted_trials = sorted(
+            study.trials, key=lambda t: t.value if t.value is not None else float('-inf'), reverse=True
+        )
+        top_100 = sorted_trials[:1000]
 
-    # Get the top 100 best trials
-    # Sort all trials by their objective value (sharpe ratio here) in descending order
-    sorted_trials = sorted(study.trials, key=lambda t: t.value if t.value is not None else float('-inf'), reverse=True)
-    top_100 = sorted_trials[:1000]
+        # Save the top 100 trials to a JSON file
+        now = datetime.now()
+        filename = f"src/results/backtest_{now.strftime('%Y%m%d_%H%M')}.json"
+        top_100_results = [{'rank': i + 1, 'value': trial.value, 'params': trial.params} for i, trial in enumerate(top_100)]
 
-    # Save the top 100 trials to a JSON file
+        with open(filename, 'w') as f:
+            json.dump(top_100_results, f, indent=4)
 
-    now = datetime.now()
-    filename = f"src/results/backtest_{now.strftime('%Y%m%d_%H%M')}.json"
-
-    top_100_results = [{'rank': i + 1, 'value': trial.value, 'params': trial.params} for i, trial in enumerate(top_100)]
-    
-    with open(filename, 'w') as f:
-        json.dump(top_100_results, f, indent=4)
-
-    print(f"\nTop 100 Trials saved to {filename}")
+        print(f"\nTop 100 Trials saved to {filename}")
