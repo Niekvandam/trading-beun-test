@@ -24,6 +24,11 @@ def backtest_strategy(data_dict, param_grid, timeframes, num_slices=5, slice_len
             resampled_data = data_dict[timeframe]
             slices = get_random_slices(resampled_data, num_slices=num_slices, slice_length=slice_length)
             
+            # Define 'close', 'high', 'low' from resampled_data
+            close = resampled_data['close'].values
+            high = resampled_data['high'].values
+            low = resampled_data['low'].values
+
             # Pre-extract necessary columns to avoid repeated access
             close_dict = {}
             high_dict = {}
@@ -201,61 +206,61 @@ def backtest_strategy_hp(data_dict, param_list, timeframes, num_slices=5, slice_
             if stoch_d_key not in indicator_data:
                 indicator_data[stoch_d_key] = resampled_data[stoch_d_key].values
 
-        for params in param_list:
-            numba_params = create_numba_params(params)
-            total_roi = 0
-            total_trades = 0
+    for params in param_list:
+        numba_params = create_numba_params(params)
+        total_roi = 0
+        total_trades = 0
 
-            sma_short = indicator_data[f'sma_{params["sma_short"]}']
-            sma_long = indicator_data[f'sma_{params["sma_long"]}']
-            rsi = indicator_data[f'rsi_{params["rsi_period"]}']
-            upper_bb = indicator_data[f'upper_bb_{params["bb_period"]}_{params["bb_num_std"]:.1f}']
-            lower_bb = indicator_data[f'lower_bb_{params["bb_period"]}_{params["bb_num_std"]:.1f}']
-            macd_line = indicator_data[f'macd_line_{params["macd_fast"]}_{params["macd_slow"]}_{params["macd_signal"]}']
-            signal_line = indicator_data[f'signal_line_{params["macd_fast"]}_{params["macd_slow"]}_{params["macd_signal"]}']
-            ema = indicator_data[f'ema_{params["ema_period"]}']
-            atr = indicator_data[f'atr_{params["atr_period"]}']
-            stoch_k = indicator_data[f'stoch_k_{params["stoch_k_period"]}_{params["stoch_d_period"]}']
-            stoch_d = indicator_data[f'stoch_d_{params["stoch_k_period"]}_{params["stoch_d_period"]}']
+        sma_short = indicator_data[f'sma_{params["sma_short"]}']
+        sma_long = indicator_data[f'sma_{params["sma_long"]}']
+        rsi = indicator_data[f'rsi_{params["rsi_period"]}']
+        upper_bb = indicator_data[f'upper_bb_{params["bb_period"]}_{params["bb_num_std"]:.1f}']
+        lower_bb = indicator_data[f'lower_bb_{params["bb_period"]}_{params["bb_num_std"]:.1f}']
+        macd_line = indicator_data[f'macd_line_{params["macd_fast"]}_{params["macd_slow"]}_{params["macd_signal"]}']
+        signal_line = indicator_data[f'signal_line_{params["macd_fast"]}_{params["macd_slow"]}_{params["macd_signal"]}']
+        ema = indicator_data[f'ema_{params["ema_period"]}']
+        atr = indicator_data[f'atr_{params["atr_period"]}']
+        stoch_k = indicator_data[f'stoch_k_{params["stoch_k_period"]}_{params["stoch_d_period"]}']
+        stoch_d = indicator_data[f'stoch_d_{params["stoch_k_period"]}_{params["stoch_d_period"]}']
 
-            for data_slice in slices:
-                data_slice = data_slice.dropna()
-                
-                # Retrieve support and resistance levels
+        for data_slice in slices:
+            data_slice = data_slice.dropna()
+            
+            # Retrieve support and resistance levels
 
-                # Ensure correct argument order as per the trading_strategy signature
-                final_balance, trades = trading_strategy(
-                    close_all,
-                    high_all,
-                    low_all,
-                    sma_short,
-                    sma_long,
-                    ema,
-                    rsi,
-                    stoch_k,
-                    stoch_d,
-                    upper_bb,
-                    lower_bb,
-                    macd_line,
-                    signal_line,
-                    atr,
-                    support_levels,
-                    resistance_levels,
-                    numba_params
-                )
+            # Ensure correct argument order as per the trading_strategy signature
+            final_balance, trades = trading_strategy(
+                close_all,
+                high_all,
+                low_all,
+                sma_short,
+                sma_long,
+                ema,
+                rsi,
+                stoch_k,
+                stoch_d,
+                upper_bb,
+                lower_bb,
+                macd_line,
+                signal_line,
+                atr,
+                support_levels,
+                resistance_levels,
+                numba_params
+            )
 
-                initial_balance = params.get('starting_balance', 250)
-                roi = (final_balance - initial_balance) / initial_balance * 100
-                total_roi += roi
-                total_trades += trades
+            initial_balance = params.get('starting_balance', 250)
+            roi = (final_balance - initial_balance) / initial_balance * 100.0
+            total_roi += roi
+            total_trades += trades
 
-            avg_roi = total_roi / num_slices
-            avg_trades = total_trades / num_slices
-            result = {
-                'timeframe': timeframe,
-                'params': params,
-                'avg_roi': avg_roi,
-                'avg_trades': avg_trades
-            }
-            results.append(result)
+        avg_roi = total_roi / num_slices
+        avg_trades = total_trades / num_slices
+        result = {
+            'timeframe': timeframe,
+            'params': params,
+            'avg_roi': avg_roi,
+            'avg_trades': avg_trades
+        }
+        results.append(result)
     return pd.DataFrame(results)
