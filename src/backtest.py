@@ -48,6 +48,8 @@ def backtest_strategy(data_dict, param_grid, timeframes, num_slices=5, slice_len
                     atr = data_slice[f'atr_{params["atr_period"]}'].values
                     stoch_k = data_slice[f'stoch_k_{params["stoch_k_period"]}_{params["stoch_d_period"]}'].values
                     stoch_d = data_slice[f'stoch_d_{params["stoch_k_period"]}_{params["stoch_d_period"]}'].values
+                    support_levels = data_dict['support_levels']
+                    resistance_levels = data_dict['resistance_levels']
 
                     # Ensure correct argument order as per the trading_strategy signature
                     final_balance, trades = trading_strategy(
@@ -65,6 +67,8 @@ def backtest_strategy(data_dict, param_grid, timeframes, num_slices=5, slice_len
                         macd_line,
                         signal_line,
                         atr,
+                        support_levels,
+                        resistance_levels,
                         numba_params
                     )
 
@@ -100,6 +104,8 @@ def backtest_strategy_hp(data_dict, param_list, timeframes, num_slices=5, slice_
             numba_params = create_numba_params(params)
             total_roi = 0
             total_trades = 0
+            support_levels = data_dict['support_levels']
+            resistance_levels = data_dict['resistance_levels']
             for data_slice in slices:
                 data_slice = data_slice.dropna()
                 
@@ -115,14 +121,20 @@ def backtest_strategy_hp(data_dict, param_list, timeframes, num_slices=5, slice_
                 macd_line = data_slice[f'macd_line_{params["macd_fast"]}_{params["macd_slow"]}_{params["macd_signal"]}'].values
                 signal_line = data_slice[f'signal_line_{params["macd_fast"]}_{params["macd_slow"]}_{params["macd_signal"]}'].values
                 ema = data_slice[f'ema_{params["ema_period"]}'].values
-                atr = data_slice[f'atr_{14}'].values  # ATR period is fixed at 14
+                atr = data_slice[f'atr_{params["atr_period"]}'].values  # ATR period is variable
                 stoch_k = data_slice[f'stoch_k_{params["stoch_k_period"]}_{params["stoch_d_period"]}'].values
                 stoch_d = data_slice[f'stoch_d_{params["stoch_k_period"]}_{params["stoch_d_period"]}'].values
+
+                # Retrieve support and resistance levels
+                support_levels = data_dict['support_levels']
+                resistance_levels = data_dict['resistance_levels']
 
                 # Pass all required parameters to trading_strategy
                 final_balance, trades = trading_strategy(
                     close, high, low, sma_short, sma_long, ema, rsi, stoch_k, stoch_d,
-                    upper_bb, lower_bb, macd_line, signal_line, atr, numba_params
+                    upper_bb, lower_bb, macd_line, signal_line, atr, 
+                    support_levels, resistance_levels,
+                    numba_params
                 )
 
                 initial_balance = params.get('starting_balance', 250)

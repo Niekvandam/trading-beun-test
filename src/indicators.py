@@ -65,8 +65,8 @@ def collect_indicator_params_from_params(params):
     macd_slow_unique = [params['macd_slow']]
     macd_signal_unique = [params['macd_signal']]
     ema_periods_unique = [params['ema_period']]
-    atr_periods_unique = [14]  # Assuming ATR period is fixed
-    
+    atr_periods_unique = [params.get('atr_period', 14)]  # Assuming ATR period is fixed
+
     return {
         'sma_periods': list(sma_periods_set),
         'rsi_periods': rsi_periods_unique,

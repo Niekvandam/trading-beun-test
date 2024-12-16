@@ -13,6 +13,7 @@ def trading_strategy_enhanced(
     hold_time_limit, atr_period, allow_short, trend_filter,
     dynamic_sizing_factor,
     higher_tf_ema,
+    support_levels, resistance_levels,
     initial_condition_flags
 ):
 
@@ -24,17 +25,21 @@ def trading_strategy_enhanced(
     take_profit_price = 0.0
     entry_index = 0
     trades = 0
-    
+
     # Track recent P/L for dynamic sizing
     recent_pnl = 0.0
     trade_count = 0
-    
+
     n = len(close)
     for i in range(1, n):
         # Determine market trend from a higher timeframe EMA (e.g., bullish if close > higher_tf_ema)
         bullish_trend = close[i] > higher_tf_ema[i] if trend_filter else True
         bearish_trend = close[i] < higher_tf_ema[i] if trend_filter else True
-        
+
+        # Retrieve support and resistance levels
+        support_level = support_levels[i]
+        resistance_level = resistance_levels[i]
+
         # Compute condition score for long
         condition_score_long = 0.0
         if sma_short[i - 1] < sma_long[i - 1] and sma_short[i] >= sma_long[i]:
@@ -49,7 +54,12 @@ def trading_strategy_enhanced(
             condition_score_long += 1.0
         if close[i] > ema[i]:
             condition_score_long += 0.5
-        
+        # Enhance condition score based on proximity to support
+        support_proximity = (close[i] - support_level) / support_level
+        support_threshold = 0.01  # 1% proximity
+        if support_proximity <= support_threshold:
+            condition_score_long += 0.5  # Favor buying near support
+
         # Compute condition score for short
         condition_score_short = 0.0
         if sma_short[i - 1] > sma_long[i - 1] and sma_short[i] <= sma_long[i]:
@@ -64,12 +74,17 @@ def trading_strategy_enhanced(
             condition_score_short += 1.0
         if close[i] < ema[i]:
             condition_score_short += 0.5
-        
+        # Adjust condition score based on proximity to resistance
+        resistance_proximity = (resistance_level - close[i]) / resistance_level
+        resistance_threshold = 0.01  # 1% proximity
+        if resistance_proximity <= resistance_threshold:
+            condition_score_short += 0.5  # Favor selling near resistance
+
         # Dynamic position sizing adjustment based on recent performance
         # If recent pnl > 0, slightly increase position size risk_per_trade, else decrease
         adjusted_risk_per_trade = risk_per_trade * (1 + dynamic_sizing_factor * (recent_pnl / (trade_count+1e-9)))
         adjusted_risk_per_trade = max(min(adjusted_risk_per_trade, risk_per_trade * 2), risk_per_trade * 0.5)
-        
+
         if position == 0:
             # Entry Logic
             # Go long if conditions met and trend is bullish
@@ -91,10 +106,10 @@ def trading_strategy_enhanced(
                 position = 1
                 entry_index = i
                 trades += 1
-                
+
                 # Store initial conditions that caused entry
                 initial_condition_flags = (condition_score_long, condition_score_short)
-            
+
             # Go short if conditions met and allowed and trend is bearish
             elif allow_short and condition_score_short >= threshold and bearish_trend:
                 atr_value = atr[i]
@@ -109,22 +124,22 @@ def trading_strategy_enhanced(
                 stop_loss_price = entry_price + stop_loss_distance
                 take_profit_price = entry_price - take_profit_distance
                 total_cost = position_size * entry_price
-                balance += total_cost # Because entering short effectively gives cash
+                balance += total_cost  # Because entering short effectively gives cash
                 balance -= total_cost * broker_fee
                 position = -1
                 entry_index = i
                 trades += 1
-                
+
                 # Store initial conditions that caused entry
                 initial_condition_flags = (condition_score_long, condition_score_short)
-        
+
         else:
             # Manage open position
             current_price = close[i]
             atr_value = atr[i]
             if np.isnan(atr_value) or atr_value == 0:
                 atr_value = (stop_loss_price - take_profit_price) / 2  # fallback
-            
+
             # Update trailing stops
             if position == 1:
                 new_stop_loss_price = current_price - (atr_value * trailing_stop_loss_pct)
@@ -140,7 +155,7 @@ def trading_strategy_enhanced(
                 new_take_profit_price = current_price - (atr_value * trailing_take_profit_pct)
                 if new_take_profit_price < take_profit_price:
                     take_profit_price = new_take_profit_price
-            
+
             # Early exit if initial conditions are no longer valid
             # Example: if we went long but now condition_score_long < threshold
             if position == 1 and condition_score_long < threshold:
@@ -151,7 +166,7 @@ def trading_strategy_enhanced(
                 position = 0
                 recent_pnl += pnl
                 trade_count += 1
-            
+
             elif position == -1 and condition_score_short < threshold:
                 exit_price = current_price * (1 + slippage)
                 pnl = (entry_price - exit_price) * position_size
@@ -160,7 +175,7 @@ def trading_strategy_enhanced(
                 position = 0
                 recent_pnl += pnl
                 trade_count += 1
-            
+
             # Exit logic: Time limit, stop loss, take profit
             exit_reason = 0
             if hold_time_limit != -1 and (i - entry_index) >= hold_time_limit:
@@ -172,14 +187,14 @@ def trading_strategy_enhanced(
                 elif high[i] >= take_profit_price:
                     exit_reason = 3
                     exit_price = take_profit_price
-            else: # position == -1
+            else:  # position == -1
                 if high[i] >= stop_loss_price:
                     exit_reason = 2
                     exit_price = stop_loss_price
                 elif low[i] <= take_profit_price:
                     exit_reason = 3
                     exit_price = take_profit_price
-            
+
             if exit_reason > 0:
                 if position == 1:
                     exit_price *= (1 - slippage)
@@ -194,5 +209,5 @@ def trading_strategy_enhanced(
                 position = 0
                 recent_pnl += pnl
                 trade_count += 1
-    
+
     return balance, trades

@@ -5,6 +5,7 @@ import numpy as np
 def trading_strategy(
     close, high, low, sma_short, sma_long, ema, rsi, stoch_k, stoch_d,
     upper_bb, lower_bb, macd_line, signal_line, atr,
+    support_levels, resistance_levels,
     params
 ):
     # Extract parameters
@@ -33,19 +34,15 @@ def trading_strategy(
     entry_index = 0
     trades = 0
 
-    support_window = 30  # Number of periods to look back for support/resistance
+    support_window = params['support_resistance_window']  # Number of periods to look back for support/resistance
 
     n = len(close)
     for i in range(1, n):
         condition_score = 0.0
 
-        # Calculate Support and Resistance
-        if i >= support_window:
-            support_level = np.min(low[i - support_window:i])
-            resistance_level = np.max(high[i - support_window:i])
-        else:
-            support_level = np.min(low[0:i])
-            resistance_level = np.max(high[0:i])
+        # Retrieve support and resistance levels
+        support_level = support_levels[i]
+        resistance_level = resistance_levels[i]
 
         # Calculate proximity to Support and Resistance
         support_proximity = (close[i] - support_level) / support_level
@@ -143,8 +140,10 @@ def trading_strategy(
 
             if exit_reason > 0:
                 exit_price = exit_price * (1 - slippage)
+                pnl = (exit_price - entry_price) * position_size
                 balance += position_size * exit_price
                 balance -= position_size * exit_price * broker_fee  # Broker fee
                 position = 0
+                trades += 1
 
     return balance, trades

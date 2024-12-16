@@ -23,7 +23,15 @@ def run_walk_forward_backtest(data, params, n_splits=4):
         # Precompute indicators
         indicator_params = collect_indicator_params_from_params(params)
         timeframe = params.get('timeframe', '1H')
-        data_dict = precompute_data(test_data, [timeframe], indicator_params)
+        support_resistance_timeframe = params.get('support_resistance_timeframe', '1H')
+        support_resistance_window = params.get('support_resistance_window', 30)
+        data_dict = precompute_data(
+            test_data, 
+            [timeframe], 
+            indicator_params, 
+            support_resistance_timeframe, 
+            support_resistance_window
+        )
         test_res = data_dict[timeframe]
 
         close = test_res['close'].values
@@ -45,6 +53,10 @@ def run_walk_forward_backtest(data, params, n_splits=4):
         atr = test_res[f'atr_{params["atr_period"]}'].values
         stoch_k = test_res[f'stoch_k_{params["stoch_k_period"]}_{params["stoch_d_period"]}'].values
         stoch_d = test_res[f'stoch_d_{params["stoch_k_period"]}_{params["stoch_d_period"]}'].values
+
+        # Retrieve support and resistance levels
+        support_levels = data_dict['support_levels']
+        resistance_levels = data_dict['resistance_levels']
         
         initial_condition_flags = (0.0, 0.0)
 
@@ -71,6 +83,8 @@ def run_walk_forward_backtest(data, params, n_splits=4):
             trend_filter=params.get('trend_filter', True),
             dynamic_sizing_factor=params.get('dynamic_sizing_factor', 0.1),
             higher_tf_ema=higher_tf_ema,
+            support_levels=support_levels,
+            resistance_levels=resistance_levels,
             initial_condition_flags=initial_condition_flags
         )
 
@@ -162,6 +176,10 @@ def objective(trial):
     stoch_threshold_low = trial.suggest_float('stoch_threshold_low', 10, 30)
     stoch_threshold_high = trial.suggest_float('stoch_threshold_high', 70, 90)
     atr_period = trial.suggest_int('atr_period', 7, 21)
+    
+    # New parameters for Support and Resistance
+    support_resistance_timeframe = trial.suggest_categorical('support_resistance_timeframe', ['1H', '4H', '1D'])
+    support_resistance_window = trial.suggest_int('support_resistance_window', 10, 50, step=10)
 
     # Add multiple timeframes if desired
     timeframes = ['1min', '3min', '5min', '15min', '30min', '1h', '2h', '4h']
@@ -189,7 +207,6 @@ def objective(trial):
         'threshold': threshold,
         'broker_fee': 0.0002,
         'slippage': 0.00005,
-        'starting_balance': 250,
         'hold_time_limit': -1,
         'stoch_k_period': stoch_k_period,
         'stoch_d_period': stoch_d_period,
@@ -200,6 +217,8 @@ def objective(trial):
         'allow_short': True,
         'trend_filter': True,
         'dynamic_sizing_factor': 0.1,
+        'support_resistance_timeframe': support_resistance_timeframe,
+        'support_resistance_window': support_resistance_window
     }
 
     fold_results = run_walk_forward_backtest(data, params, n_splits=4)
@@ -239,7 +258,7 @@ if __name__ == '__main__':
         sorted_trials = sorted(
             study.trials, key=lambda t: t.value if t.value is not None else float('-inf'), reverse=True
         )
-        top_100 = sorted_trials[:1000]
+        top_100 = sorted_trials[:100]
 
         # Save the top 100 trials to a JSON file
         now = datetime.now()

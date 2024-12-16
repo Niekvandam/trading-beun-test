@@ -23,7 +23,9 @@ param_dtype = np.dtype([
     ('stoch_d_period', np.int64),
     ('stoch_threshold_low', np.float64),
     ('stoch_threshold_high', np.float64),
-    ('atr_period', np.int64)  # Add atr_period here
+    ('atr_period', np.int64),  # Add atr_period here
+    ('support_resistance_timeframe', 'U10'),  # Added support_resistance_timeframe
+    ('support_resistance_window', np.int64)  # Added support_resistance_window
 ])
 
 
@@ -63,6 +65,8 @@ def create_numba_params(params):
     if hold_time_limit is None:
         hold_time_limit = -1
     atr_period = params.get('atr_period', 14)
+    support_resistance_timeframe = params.get('support_resistance_timeframe', '1H')
+    support_resistance_window = params.get('support_resistance_window', 30)
     return np.array([(
         params.get('starting_balance', 250),
         params['rsi_threshold_low'],
@@ -80,14 +84,16 @@ def create_numba_params(params):
         params['stoch_d_period'],
         params['stoch_threshold_low'],
         params['stoch_threshold_high'],
-        atr_period
+        atr_period,
+        support_resistance_timeframe.encode('utf-8')[:10].decode('utf-8'),  # Ensure max length of 10
+        support_resistance_window
     )], dtype=param_dtype)[0]
 
 
 
-
-def precompute_data(data, timeframes, indicator_params):
+def precompute_data(data, timeframes, indicator_params, support_resistance_timeframe, support_resistance_window):
     data_dict = {}
+    # Precompute indicators for main timeframes
     for timeframe in timeframes:
         resampled_data = resample_data(data, timeframe=timeframe)
         resampled_data.dropna(inplace=True)  # Ensure no NaNs in the final dataset
@@ -140,6 +146,24 @@ def precompute_data(data, timeframes, indicator_params):
         # Drop NaNs
         resampled_data.dropna(inplace=True)
         data_dict[timeframe] = resampled_data
+
+    # Precompute Support and Resistance based on different timeframe and window
+    resampled_support = resample_data(data, timeframe=support_resistance_timeframe)
+    resampled_support.dropna(inplace=True)
+
+    # Calculate Support and Resistance using a rolling window
+    support_levels = resampled_support['low'].rolling(window=support_resistance_window).min().reindex(data.index, method='ffill').values
+    resistance_levels = resampled_support['high'].rolling(window=support_resistance_window).max().reindex(data.index, method='ffill').values
+
+    # Handle NaN values by setting to the overall min and max
+    min_low = data['low'].min()
+    max_high = data['high'].max()
+    support_levels = np.where(np.isnan(support_levels), min_low, support_levels)
+    resistance_levels = np.where(np.isnan(resistance_levels), max_high, resistance_levels)
+
+    data_dict['support_levels'] = support_levels
+    data_dict['resistance_levels'] = resistance_levels
+
     return data_dict
 
 
@@ -160,7 +184,7 @@ def collect_indicator_params(param_grid):
     macd_slow_unique = list(set(param_grid.get('macd_slow', [])))
     macd_signal_unique = list(set(param_grid.get('macd_signal', [])))
     ema_periods_unique = list(set(param_grid.get('ema_period', [])))
-    atr_periods_unique = [14]  # Assuming ATR period is fixed
+    atr_periods_unique = list(set(param_grid.get('atr_period', [14])))  # Assuming ATR period is fixed
 
     return {
         'sma_periods': sma_periods_unique,
@@ -173,6 +197,7 @@ def collect_indicator_params(param_grid):
         'ema_periods': ema_periods_unique,
         'atr_periods': atr_periods_unique
     }
+
 def collect_indicator_params_from_params(params):
     # Handle Stochastic Oscillator parameters
     stoch_k_periods_unique = [params.get('stoch_k_period', 14)]  # Default to 14
@@ -191,7 +216,6 @@ def collect_indicator_params_from_params(params):
     macd_signal_unique = [params['macd_signal']]
     atr_periods_unique = [params.get('atr_period', 14)]  # Include ATR period
 
-    # Return a dictionary of all unique indicator parameters
     return {
         'stoch_k_periods': stoch_k_periods_unique,
         'stoch_d_periods': stoch_d_periods_unique,
