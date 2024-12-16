@@ -173,12 +173,15 @@ def precompute_data(
                 resampled_data[f'macd_hist_{macd_fast}_{macd_slow}_{macd_signal}'] = macd_hist
 
     # Compute ATR
+    atr_columns = {}
     for atr_period in atr_periods:
-        resampled_data[f'atr_{atr_period}'] = calculate_atr(resampled_data, period=atr_period)
+        atr_columns[f'atr_{atr_period}'] = calculate_atr(resampled_data, period=atr_period)
+    atr_df = pd.DataFrame(atr_columns, index=resampled_data.index)
+    resampled_data = pd.concat([resampled_data, atr_df], axis=1)
 
     # Drop NaNs after all computations
     resampled_data.dropna(inplace=True)
-    data_dict['test'] = resampled_data
+    data_dict['test'] = resampled_data.copy()  # De-fragment the DataFrame
 
     # Compute Support and Resistance for all combinations
     for timeframe in support_resistance_timeframes:
