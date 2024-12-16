@@ -33,9 +33,34 @@ def trading_strategy(
     entry_index = 0
     trades = 0
 
+    support_window = 30  # Number of periods to look back for support/resistance
+
     n = len(close)
     for i in range(1, n):
         condition_score = 0.0
+
+        # Calculate Support and Resistance
+        if i >= support_window:
+            support_level = np.min(low[i - support_window:i])
+            resistance_level = np.max(high[i - support_window:i])
+        else:
+            support_level = np.min(low[0:i])
+            resistance_level = np.max(high[0:i])
+
+        # Calculate proximity to Support and Resistance
+        support_proximity = (close[i] - support_level) / support_level
+        resistance_proximity = (resistance_level - close[i]) / resistance_level
+
+        support_threshold = 0.01  # 1% proximity
+        resistance_threshold = 0.01  # 1% proximity
+
+        # Enhance condition score based on Support
+        if support_proximity <= support_threshold:
+            condition_score += 0.5  # Favor buying near support
+
+        # Adjust condition score based on Resistance
+        if resistance_proximity <= resistance_threshold:
+            condition_score -= 0.5  # Disfavor buying near resistance
 
         # Weighted Conditions
         # Condition: SMA Crossover (Weight: 1.5)
