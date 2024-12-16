@@ -44,8 +44,8 @@ def backtest_strategy(data_dict, param_grid, timeframes, num_slices=5, slice_len
             atr_dict = {}
             stoch_k_dict = {}
             stoch_d_dict = {}
-            support_levels = data_dict['test']['support_levels']  # Actualización aquí
-            resistance_levels = data_dict['test']['resistance_levels']  # Actualización aquí
+            support_levels = data_dict['test']['support_levels'].values  # Updated to pass NumPy array
+            resistance_levels = data_dict['test']['resistance_levels'].values  # Updated to pass NumPy array
 
             # Pre-extract columns for all parameter combinations
             for params in param_combinations:
@@ -106,9 +106,9 @@ def backtest_strategy(data_dict, param_grid, timeframes, num_slices=5, slice_len
                     data_slice = data_slice.dropna()
 
                     # Retrieve support and resistance levels
-                    # Ya extraídos anteriormente
+                    # Already extracted as NumPy arrays
 
-                    # Asegurar el orden correcto de argumentos según la firma de la función trading_strategy
+                    # Ensure correct argument order based on trading_strategy signature
                     final_balance, trades = trading_strategy(
                         close,
                         high,
@@ -161,8 +161,8 @@ def backtest_strategy_hp(data_dict, param_list, timeframes, num_slices=5, slice_
         close_all = resampled_data['close'].values
         high_all = resampled_data['high'].values
         low_all = resampled_data['low'].values
-        support_levels = data_dict['test']['support_levels']  # Actualización aquí
-        resistance_levels = data_dict['test']['resistance_levels']  # Actualización aquí
+        support_levels = data_dict['test']['support_levels'].values  # Updated to pass NumPy array
+        resistance_levels = data_dict['test']['resistance_levels'].values  # Updated to pass NumPy array
 
         # Pre-extract indicators for all params
         indicator_data = {}
@@ -224,10 +224,10 @@ def backtest_strategy_hp(data_dict, param_list, timeframes, num_slices=5, slice_
             data_slice = data_slice.dropna()
             
             # Retrieve support and resistance levels
-            # Ya extraídos anteriormente
+            # Already extracted as NumPy arrays
 
-            # Asegurar el orden correcto de argumentos según la firma de la función trading_strategy
-            final_balance, trades = trading_strategy(
+            # Ensure correct argument order based on trading_strategy_enhanced signature
+            final_balance, trades = trading_strategy_enhanced(
                 close_all,
                 high_all,
                 low_all,
@@ -242,9 +242,28 @@ def backtest_strategy_hp(data_dict, param_list, timeframes, num_slices=5, slice_
                 macd_line,
                 signal_line,
                 atr,
-                support_levels,
-                resistance_levels,
-                numba_params
+                starting_balance=params.get('starting_balance', 250),
+                rsi_threshold_low=params['rsi_threshold_low'],
+                rsi_threshold_high=params['rsi_threshold_high'],
+                stoch_threshold_low=params['stoch_threshold_low'],
+                stoch_threshold_high=params['stoch_threshold_high'],
+                risk_per_trade=params['risk_per_trade'],
+                stop_loss_pct=params['stop_loss'],
+                take_profit_pct=params['take_profit'],
+                trailing_stop_loss_pct=params['trailing_stop_loss'],
+                trailing_take_profit_pct=params['trailing_take_profit'],
+                threshold=params['threshold'],
+                broker_fee=params.get('broker_fee', 0.0005),
+                slippage=params.get('slippage', 0.0002),
+                hold_time_limit=params.get('hold_time_limit', -1),
+                atr_period=params['atr_period'],
+                allow_short=params.get('allow_short', True),
+                trend_filter=params.get('trend_filter', True),
+                dynamic_sizing_factor=params.get('dynamic_sizing_factor', 0.1),
+                higher_tf_ema=indicator_data[f'ema_{params["ema_period"]}'],
+                support_levels=support_levels,
+                resistance_levels=resistance_levels,
+                initial_condition_flags=(0.0, 0.0)
             )
 
             initial_balance = params.get('starting_balance', 250)
