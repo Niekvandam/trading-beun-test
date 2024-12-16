@@ -1,6 +1,7 @@
 import pandas as pd
 from tqdm import tqdm
 from strategy import trading_strategy
+from strategy_enhanced import trading_strategy_enhanced
 from utils import (
     generate_param_combinations,
     get_random_slices,
@@ -85,65 +86,65 @@ def backtest_strategy(data_dict, param_grid, timeframes, num_slices=5, slice_len
                 if stoch_d_key not in stoch_d_dict:
                     stoch_d_dict[stoch_d_key] = resampled_data[stoch_d_key].values
 
-            for params in param_combinations:
-                numba_params = create_numba_params(params)
-                total_roi = 0
-                total_trades = 0
+        for params in param_combinations:
+            numba_params = create_numba_params(params)
+            total_roi = 0
+            total_trades = 0
 
-                sma_short = sma_short_dict[f'sma_{params["sma_periods"][0]}']
-                sma_long = sma_long_dict[f'sma_{params["sma_periods"][1]}']
-                rsi = rsi_dict[f'rsi_{params["rsi_period"]}']
-                upper_bb = upper_bb_dict[f'upper_bb_{params["bb_period"]}_{params["bb_num_std"]:.1f}']
-                lower_bb = lower_bb_dict[f'lower_bb_{params["bb_period"]}_{params["bb_num_std"]:.1f}']
-                macd_line = macd_line_dict[f'macd_line_{params["macd_fast"]}_{params["macd_slow"]}_{params["macd_signal"]}']
-                signal_line = signal_line_dict[f'signal_line_{params["macd_fast"]}_{params["macd_slow"]}_{params["macd_signal"]}']
-                ema = ema_dict[f'ema_{params["ema_period"]}']
-                atr = atr_dict[f'atr_{params["atr_period"]}']
-                stoch_k = stoch_k_dict[f'stoch_k_{params["stoch_k_period"]}_{params["stoch_d_period"]}']
-                stoch_d = stoch_d_dict[f'stoch_d_{params["stoch_k_period"]}_{params["stoch_d_period"]}']
+            sma_short = sma_short_dict[f'sma_{params["sma_periods"][0]}']
+            sma_long = sma_long_dict[f'sma_{params["sma_periods"][1]}']
+            rsi = rsi_dict[f'rsi_{params["rsi_period"]}']
+            upper_bb = upper_bb_dict[f'upper_bb_{params["bb_period"]}_{params["bb_num_std"]:.1f}']
+            lower_bb = lower_bb_dict[f'lower_bb_{params["bb_period"]}_{params["bb_num_std"]:.1f}']
+            macd_line = macd_line_dict[f'macd_line_{params["macd_fast"]}_{params["macd_slow"]}_{params["macd_signal"]}']
+            signal_line = signal_line_dict[f'signal_line_{params["macd_fast"]}_{params["macd_slow"]}_{params["macd_signal"]}']
+            ema = ema_dict[f'ema_{params["ema_period"]}']
+            atr = atr_dict[f'atr_{params["atr_period"]}']
+            stoch_k = stoch_k_dict[f'stoch_k_{params["stoch_k_period"]}_{params["stoch_d_period"]}']
+            stoch_d = stoch_d_dict[f'stoch_d_{params["stoch_k_period"]}_{params["stoch_d_period"]}']
 
-                for data_slice in slices:
-                    data_slice = data_slice.dropna()
+            for data_slice in slices:
+                data_slice = data_slice.dropna()
 
-                    # Retrieve support and resistance levels
-                    # Already extracted as NumPy arrays
+                # Retrieve support and resistance levels
+                # Already extracted as NumPy arrays
 
-                    # Ensure correct argument order based on trading_strategy signature
-                    final_balance, trades = trading_strategy(
-                        close,
-                        high,
-                        low,
-                        sma_short,
-                        sma_long,
-                        ema,
-                        rsi,
-                        stoch_k,
-                        stoch_d,
-                        upper_bb,
-                        lower_bb,
-                        macd_line,
-                        signal_line,
-                        atr,
-                        support_levels,
-                        resistance_levels,
-                        numba_params
-                    )
+                # Ensure correct argument order based on trading_strategy_signature
+                final_balance, trades = trading_strategy(
+                    close,
+                    high,
+                    low,
+                    sma_short,
+                    sma_long,
+                    ema,
+                    rsi,
+                    stoch_k,
+                    stoch_d,
+                    upper_bb,
+                    lower_bb,
+                    macd_line,
+                    signal_line,
+                    atr,
+                    support_levels,
+                    resistance_levels,
+                    numba_params
+                )
 
-                    initial_balance = params.get('starting_balance', 250)
-                    roi = (final_balance - initial_balance) / initial_balance * 100
-                    total_roi += roi
-                    total_trades += trades
+                initial_balance = params.get('starting_balance', 250)
+                roi = (final_balance - initial_balance) / initial_balance * 100
+                total_roi += roi
+                total_trades += trades
 
-                avg_roi = total_roi / num_slices if num_slices > 0 else 0
-                avg_trades = total_trades / num_slices if num_slices > 0 else 0
+            avg_roi = total_roi / num_slices if num_slices > 0 else 0
+            avg_trades = total_trades / num_slices if num_slices > 0 else 0
 
-                results.append({
-                    'timeframe': timeframe,
-                    'params': params,
-                    'avg_roi': avg_roi,
-                    'avg_trades': avg_trades
-                })
-                pbar.update(1)
+            results.append({
+                'timeframe': timeframe,
+                'params': params,
+                'avg_roi': avg_roi,
+                'avg_trades': avg_trades
+            })
+            pbar.update(1)
 
     return pd.DataFrame(results)
 
