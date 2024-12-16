@@ -100,34 +100,37 @@ def precompute_data(
     Precompute all necessary indicators based on the provided parameter ranges.
     """
     data_dict = {}
-    # Precompute indicators for multiple timeframes if necessary
-    indicator_periods = {
-        'sma_short': sma_periods_short,
-        'sma_long': sma_periods_long,
-        'ema_period': ema_periods,
-        'rsi_period': rsi_periods,
-        'bb_period': bb_periods,
-        'bb_num_std': bb_num_std_values,
-        'macd_fast': macd_fast_periods,
-        'macd_slow': macd_slow_periods,
-        'macd_signal': macd_signal_periods,
-        'stoch_k_period': stoch_k_periods,
-        'stoch_d_period': stoch_d_periods,
-        'atr_period': atr_periods
-    }
-
-    resampled_data = resample_data(data, timeframe='1h')  # Using a fixed timeframe for support/resistance
-
+    
     # Dictionaries to hold new columns
     new_columns = {}
+    
+    for timeframe in support_resistance_timeframes:
+        resampled_data = resample_data(data, timeframe=timeframe)
+        
+        # Compute Support and Resistance levels for each window
+        for window in support_resistance_windows:
+            support_key = f'support_levels_{timeframe}_{window}'
+            resistance_key = f'resistance_levels_{timeframe}_{window}'
+            support_levels = resampled_data['low'].rolling(window=window).min().reindex(resampled_data.index, method='ffill').values
+            resistance_levels = resampled_data['high'].rolling(window=window).max().reindex(resampled_data.index, method='ffill').values
 
+            # Handle NaN values by setting to the overall min and max
+            min_low = data['low'].min()
+            max_high = data['high'].max()
+            support_levels = np.where(np.isnan(support_levels), min_low, support_levels)
+            resistance_levels = np.where(np.isnan(resistance_levels), max_high, resistance_levels)
+
+            new_columns[support_key] = support_levels
+            new_columns[resistance_key] = resistance_levels
+
+    # Precompute indicators for all combinations
     # Compute Stochastic Oscillator for all combinations
     for k_period in stoch_k_periods:
         for d_period in stoch_d_periods:
             k_values, d_values = calculate_stochastic_oscillator(
-                resampled_data['high'], 
-                resampled_data['low'], 
-                resampled_data['close'], 
+                data['high'], 
+                data['low'], 
+                data['close'], 
                 k_period, 
                 d_period
             )
@@ -139,22 +142,22 @@ def precompute_data(
         for sma_long in sma_periods_long:
             if sma_short >= sma_long:
                 continue  # Avoid invalid SMA combinations
-            new_columns[f"sma_{sma_short}"] = resampled_data['close'].rolling(window=sma_short).mean()
-            new_columns[f"sma_{sma_long}"] = resampled_data['close'].rolling(window=sma_long).mean()
+            new_columns[f"sma_{sma_short}"] = data['close'].rolling(window=sma_short).mean()
+            new_columns[f"sma_{sma_long}"] = data['close'].rolling(window=sma_long).mean()
 
     # Compute EMAs
     for ema_period in ema_periods:
-        new_columns[f'ema_{ema_period}'] = resampled_data['close'].ewm(span=ema_period, adjust=False).mean()
+        new_columns[f'ema_{ema_period}'] = data['close'].ewm(span=ema_period, adjust=False).mean()
 
     # Compute RSI
     for rsi_period in rsi_periods:
-        new_columns[f'rsi_{rsi_period}'] = calculate_rsi(resampled_data['close'], period=rsi_period)
+        new_columns[f'rsi_{rsi_period}'] = calculate_rsi(data['close'], period=rsi_period)
 
     # Compute Bollinger Bands
     for bb_period in bb_periods:
         for bb_num_std in bb_num_std_values:
             upper_bb, lower_bb = calculate_bollinger_bands(
-                resampled_data['close'], period=bb_period, num_std_dev=bb_num_std
+                data['close'], period=bb_period, num_std_dev=bb_num_std
             )
             new_columns[f'upper_bb_{bb_period}_{bb_num_std:.1f}'] = upper_bb
             new_columns[f'lower_bb_{bb_period}_{bb_num_std:.1f}'] = lower_bb
@@ -166,7 +169,7 @@ def precompute_data(
                 continue  # Avoid invalid MACD combinations
             for macd_signal in macd_signal_periods:
                 macd_line, signal_line, macd_hist = calculate_macd(
-                    resampled_data['close'], 
+                    data['close'], 
                     fast_period=macd_fast, 
                     slow_period=macd_slow, 
                     signal_period=macd_signal
@@ -176,45 +179,17 @@ def precompute_data(
                 new_columns[f'macd_hist_{macd_fast}_{macd_slow}_{macd_signal}'] = macd_hist
 
     # Compute ATR
-    atr_columns = {}
     for atr_period in atr_periods:
-        atr_columns[f'atr_{atr_period}'] = calculate_atr(resampled_data, period=atr_period)
-    for atr_key, atr_values in atr_columns.items():
-        new_columns[atr_key] = atr_values
+        atr_values = calculate_atr(data, period=atr_period)
+        new_columns[f'atr_{atr_period}'] = atr_values
 
     # Concatenate all new columns at once
-    indicators_df = pd.DataFrame(new_columns, index=resampled_data.index)
-    resampled_data = pd.concat([resampled_data, indicators_df], axis=1)
+    indicators_df = pd.DataFrame(new_columns, index=data.index)
+    data_with_indicators = pd.concat([data, indicators_df], axis=1)
 
     # Drop NaNs after all computations
-    resampled_data.dropna(inplace=True)
-    data_dict['test'] = resampled_data.copy()  # De-fragment the DataFrame
-
-    # Compute Support and Resistance for all combinations
-    support_resistance_columns = {}
-    for timeframe in support_resistance_timeframes:
-        for window in support_resistance_windows:
-            support_levels = resampled_data['low'].rolling(window=window).min().reindex(resampled_data.index, method='ffill').values
-            resistance_levels = resampled_data['high'].rolling(window=window).max().reindex(resampled_data.index, method='ffill').values
-
-            # Handle NaN values by setting to the overall min and max
-            min_low = data['low'].min()
-            max_high = data['high'].max()
-            support_levels = np.where(np.isnan(support_levels), min_low, support_levels)
-            resistance_levels = np.where(np.isnan(resistance_levels), max_high, resistance_levels)
-
-            # Encode timeframe to bytes and truncate to 10 characters if necessary
-            encoded_timeframe = timeframe.encode('utf-8')[:10].decode('utf-8')
-
-            support_resistance_columns[f'support_levels_{encoded_timeframe}_{window}'] = support_levels
-            support_resistance_columns[f'resistance_levels_{encoded_timeframe}_{window}'] = resistance_levels
-
-    support_resistance_df = pd.DataFrame(support_resistance_columns, index=resampled_data.index)
-    resampled_data = pd.concat([resampled_data, support_resistance_df], axis=1)
-
-    # Final drop to remove any remaining NaNs
-    resampled_data.dropna(inplace=True)
-    data_dict['test'] = resampled_data.copy()  # De-fragment the DataFrame
+    data_with_indicators.dropna(inplace=True)
+    data_dict['test'] = data_with_indicators.copy()  # De-fragment the DataFrame
 
     return data_dict
 
