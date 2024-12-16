@@ -15,7 +15,7 @@ param_dtype = np.dtype([
     ('take_profit', np.float64),
     ('trailing_stop_loss', np.float64),
     ('trailing_take_profit', np.float64),
-    ('threshold', np.int64),
+    ('threshold', np.float64),
     ('broker_fee', np.float64),
     ('slippage', np.float64),
     ('hold_time_limit', np.int64),  # Use -1 for None
@@ -27,7 +27,6 @@ param_dtype = np.dtype([
     ('support_resistance_timeframe', 'U10'),  # Added support_resistance_timeframe
     ('support_resistance_window', np.int64)  # Added support_resistance_window
 ])
-
 
 def resample_data(data, timeframe='1min'):
     resampled = data.resample(timeframe).agg({
@@ -42,7 +41,6 @@ def resample_data(data, timeframe='1min'):
     resampled.dropna(inplace=True)
     return resampled
 
-
 def get_random_slices(data, num_slices=5, slice_length=3000):
     if len(data) < slice_length:
         slice_length = len(data)  # Adjust slice length to fit the data
@@ -52,8 +50,6 @@ def get_random_slices(data, num_slices=5, slice_length=3000):
         start = random.randint(0, max_start)
         random_slices.append(data.iloc[start:start + slice_length])
     return random_slices
-
-
 
 def generate_param_combinations(param_grid):
     keys, values = zip(*param_grid.items())
@@ -89,170 +85,140 @@ def create_numba_params(params):
         support_resistance_window
     )], dtype=param_dtype)[0]
 
-
-def precompute_data(data, indicator_params, support_resistance_timeframe, support_resistance_window):
+def precompute_data(
+    data, 
+    sma_periods_short, sma_periods_long,
+    ema_periods,
+    rsi_periods,
+    bb_periods, bb_num_std_values,
+    macd_fast_periods, macd_slow_periods, macd_signal_periods,
+    stoch_k_periods, stoch_d_periods,
+    atr_periods,
+    support_resistance_timeframes, support_resistance_windows
+):
+    """
+    Precompute all necessary indicators based on the provided parameter ranges.
+    """
     data_dict = {}
-    # Precompute indicators
+    # Precompute indicators for multiple timeframes if necessary
+    indicator_periods = {
+        'sma_short': sma_periods_short,
+        'sma_long': sma_periods_long,
+        'ema_period': ema_periods,
+        'rsi_period': rsi_periods,
+        'bb_period': bb_periods,
+        'bb_num_std': bb_num_std_values,
+        'macd_fast': macd_fast_periods,
+        'macd_slow': macd_slow_periods,
+        'macd_signal': macd_signal_periods,
+        'stoch_k_period': stoch_k_periods,
+        'stoch_d_period': stoch_d_periods,
+        'atr_period': atr_periods
+    }
+
     resampled_data = resample_data(data, timeframe='1h')  # Using a fixed timeframe for support/resistance
 
-    # Compute Stochastic Oscillator
-    stoch_k_period = indicator_params['stoch_k_periods'][0]
-    stoch_d_period = indicator_params['stoch_d_periods'][0]
-    k_values, d_values = calculate_stochastic_oscillator(
-        resampled_data['high'], resampled_data['low'], resampled_data['close'], stoch_k_period, stoch_d_period
-    )
-    resampled_data[f'stoch_k_{stoch_k_period}_{stoch_d_period}'] = k_values
-    resampled_data[f'stoch_d_{stoch_k_period}_{stoch_d_period}'] = d_values
+    # Compute Stochastic Oscillator for all combinations
+    for k_period in stoch_k_periods:
+        for d_period in stoch_d_periods:
+            k_values, d_values = calculate_stochastic_oscillator(
+                resampled_data['high'], 
+                resampled_data['low'], 
+                resampled_data['close'], 
+                k_period, 
+                d_period
+            )
+            resampled_data[f'stoch_k_{k_period}_{d_period}'] = k_values
+            resampled_data[f'stoch_d_{k_period}_{d_period}'] = d_values
 
     # Compute SMAs
-    sma_short = indicator_params['sma_short']
-    sma_long = indicator_params['sma_long']
-    resampled_data[f"sma_{sma_short}"] = resampled_data['close'].rolling(window=sma_short).mean()
-    resampled_data[f"sma_{sma_long}"] = resampled_data['close'].rolling(window=sma_long).mean()
+    for sma_short in sma_periods_short:
+        for sma_long in sma_periods_long:
+            if sma_short >= sma_long:
+                continue  # Avoid invalid SMA combinations
+            resampled_data[f"sma_{sma_short}"] = resampled_data['close'].rolling(window=sma_short).mean()
+            resampled_data[f"sma_{sma_long}"] = resampled_data['close'].rolling(window=sma_long).mean()
 
     # Compute EMAs
-    ema_period = indicator_params['ema_periods'][0]
-    resampled_data[f'ema_{ema_period}'] = resampled_data['close'].ewm(span=ema_period, adjust=False).mean()
+    for ema_period in ema_periods:
+        resampled_data[f'ema_{ema_period}'] = resampled_data['close'].ewm(span=ema_period, adjust=False).mean()
 
     # Compute RSI
-    rsi_period = indicator_params['rsi_periods'][0]
-    resampled_data[f'rsi_{rsi_period}'] = calculate_rsi(resampled_data['close'], period=rsi_period)
+    for rsi_period in rsi_periods:
+        resampled_data[f'rsi_{rsi_period}'] = calculate_rsi(resampled_data['close'], period=rsi_period)
 
     # Compute Bollinger Bands
-    bb_period = indicator_params['bb_periods'][0]
-    bb_num_std = indicator_params['bb_num_std'][0]
-    upper_bb, lower_bb = calculate_bollinger_bands(
-        resampled_data['close'], period=bb_period, num_std_dev=bb_num_std
-    )
-    resampled_data[f'upper_bb_{bb_period}_{bb_num_std:.1f}'] = upper_bb
-    resampled_data[f'lower_bb_{bb_period}_{bb_num_std:.1f}'] = lower_bb
+    for bb_period in bb_periods:
+        for bb_num_std in bb_num_std_values:
+            upper_bb, lower_bb = calculate_bollinger_bands(
+                resampled_data['close'], period=bb_period, num_std_dev=bb_num_std
+            )
+            resampled_data[f'upper_bb_{bb_period}_{bb_num_std:.1f}'] = upper_bb
+            resampled_data[f'lower_bb_{bb_period}_{bb_num_std:.1f}'] = lower_bb
 
     # Compute MACD
-    macd_fast = indicator_params['macd_fast'][0]
-    macd_slow = indicator_params['macd_slow'][0]
-    macd_signal = indicator_params['macd_signal'][0]
-    macd_line, signal_line, macd_hist = calculate_macd(
-        resampled_data['close'], fast_period=macd_fast, slow_period=macd_slow, signal_period=macd_signal
-    )
-    resampled_data[f'macd_line_{macd_fast}_{macd_slow}_{macd_signal}'] = macd_line
-    resampled_data[f'signal_line_{macd_fast}_{macd_slow}_{macd_signal}'] = signal_line
-    resampled_data[f'macd_hist_{macd_fast}_{macd_slow}_{macd_signal}'] = macd_hist
+    for macd_fast in macd_fast_periods:
+        for macd_slow in macd_slow_periods:
+            if macd_fast >= macd_slow:
+                continue  # Avoid invalid MACD combinations
+            for macd_signal in macd_signal_periods:
+                macd_line, signal_line, macd_hist = calculate_macd(
+                    resampled_data['close'], 
+                    fast_period=macd_fast, 
+                    slow_period=macd_slow, 
+                    signal_period=macd_signal
+                )
+                resampled_data[f'macd_line_{macd_fast}_{macd_slow}_{macd_signal}'] = macd_line
+                resampled_data[f'signal_line_{macd_fast}_{macd_slow}_{macd_signal}'] = signal_line
+                resampled_data[f'macd_hist_{macd_fast}_{macd_slow}_{macd_signal}'] = macd_hist
 
     # Compute ATR
-    atr_period = indicator_params['atr_periods'][0]
-    resampled_data[f'atr_{atr_period}'] = calculate_atr(resampled_data, period=atr_period)
+    for atr_period in atr_periods:
+        resampled_data[f'atr_{atr_period}'] = calculate_atr(resampled_data, period=atr_period)
 
-    # Drop NaNs
+    # Drop NaNs after all computations
     resampled_data.dropna(inplace=True)
     data_dict['test'] = resampled_data
 
-    # Compute Support and Resistance
-    support_levels = resampled_data['low'].rolling(window=support_resistance_window).min().reindex(data.index, method='ffill').values
-    resistance_levels = resampled_data['high'].rolling(window=support_resistance_window).max().reindex(data.index, method='ffill').values
+    # Compute Support and Resistance for all combinations
+    for timeframe in support_resistance_timeframes:
+        for window in support_resistance_windows:
+            support_levels = resampled_data['low'].rolling(window=window).min().reindex(data.index, method='ffill').values
+            resistance_levels = resampled_data['high'].rolling(window=window).max().reindex(data.index, method='ffill').values
 
-    # Handle NaN values by setting to the overall min and max
-    min_low = data['low'].min()
-    max_high = data['high'].max()
-    support_levels = np.where(np.isnan(support_levels), min_low, support_levels)
-    resistance_levels = np.where(np.isnan(resistance_levels), max_high, resistance_levels)
+            # Handle NaN values by setting to the overall min and max
+            min_low = data['low'].min()
+            max_high = data['high'].max()
+            support_levels = np.where(np.isnan(support_levels), min_low, support_levels)
+            resistance_levels = np.where(np.isnan(resistance_levels), max_high, resistance_levels)
 
-    data_dict['support_levels'] = support_levels
-    data_dict['resistance_levels'] = resistance_levels
+            # Encode timeframe to bytes and truncate to 10 characters if necessary
+            encoded_timeframe = timeframe.encode('utf-8')[:10].decode('utf-8')
+
+            data_dict[f'support_levels_{encoded_timeframe}_{window}'] = support_levels
+            data_dict[f'resistance_levels_{encoded_timeframe}_{window}'] = resistance_levels
 
     return data_dict
 
-
-def collect_indicator_params(param_grid):
-    # Collect unique SMA periods
-    sma_periods_set = set()
-    for periods in param_grid.get('sma_periods', []):
-        if periods is not None:  # Filter out None
-            sma_periods_set.update(periods)
-    sma_periods_unique = list(sma_periods_set)
-
-    # Collect other unique indicator parameters
-    rsi_periods_unique = list(set(param_grid.get('rsi_periods', [])))
-    bb_periods_unique = list(set(param_grid.get('bb_periods', [])))
-    bb_num_std_unique = list(set(param_grid.get('bb_num_std', [])))
-    macd_fast_unique = list(set(param_grid.get('macd_fast', [])))
-    macd_slow_unique = list(set(param_grid.get('macd_slow', [])))
-    macd_signal_unique = list(set(param_grid.get('macd_signal', [])))
-    ema_periods_unique = list(set(param_grid.get('ema_periods', [])))
-    atr_periods_unique = list(set(param_grid.get('atr_periods', [14])))  # Assuming ATR period is fixed
-
-    return {
-        'sma_periods': sma_periods_unique,
-        'rsi_periods': rsi_periods_unique,
-        'bb_periods': bb_periods_unique,
-        'bb_num_std': bb_num_std_unique,
-        'macd_fast': macd_fast_unique,
-        'macd_slow': macd_slow_unique,
-        'macd_signal': macd_signal_unique,
-        'ema_periods': ema_periods_unique,
-        'atr_periods': atr_periods_unique
+def collect_all_indicator_params():
+    """
+    Collect all possible indicator parameters based on the Optuna search space.
+    This ensures that all necessary indicators are precomputed.
+    """
+    indicator_params = {
+        'sma_periods_short': list(range(5, 55, 5)),      # 5 to 50 inclusive, step 5
+        'sma_periods_long': list(range(50, 210, 10)),    # 50 to 200 inclusive, step 10
+        'ema_periods': list(range(10, 55, 5)),           # 10 to 50 inclusive, step 5
+        'rsi_periods': list(range(7, 36, 7)),            # 7 to 35 inclusive, step 7
+        'bb_periods': list(range(20, 51, 10)),           # 20 to 50 inclusive, step 10
+        'bb_num_std_values': [1.5, 2.0, 2.5],
+        'macd_fast_periods': list(range(5, 13)),        # 5 to 12 inclusive
+        'macd_slow_periods': list(range(20, 31)),        # 20 to 30 inclusive
+        'macd_signal_periods': list(range(5, 16, 5)),    # 5 to 15 inclusive, step 5
+        'stoch_k_periods': list(range(7, 22, 7)),        # 7 to 21 inclusive, step 7
+        'stoch_d_periods': list(range(3, 10, 3)),        # 3 to 9 inclusive, step 3
+        'atr_periods': list(range(7, 22)),               # 7 to 21 inclusive
+        'support_resistance_timeframes': ['30m', '1h', '4h', '1d'],
+        'support_resistance_windows': list(range(10, 201, 10))  # 10 to 200 inclusive, step 10
     }
-
-def collect_indicator_params_from_params(params):
-    # Handle Stochastic Oscillator parameters
-    stoch_k_periods_unique = [params.get('stoch_k_period', 14)]  # Default to 14
-    stoch_d_periods_unique = [params.get('stoch_d_period', 3)]   # Default to 3
-    # Collect SMA and EMA periods
-    sma_short = params.get('sma_short')
-    sma_long = params.get('sma_long')
-    ema_periods_unique = [params['ema_period']]
-
-    # Extract other indicator parameters
-    rsi_periods_unique = [params['rsi_period']]
-    bb_periods_unique = [params['bb_period']]
-    bb_num_std_unique = [params['bb_num_std']]
-    macd_fast_unique = [params['macd_fast']]
-    macd_slow_unique = [params['macd_slow']]
-    macd_signal_unique = [params['macd_signal']]
-    atr_periods_unique = [params.get('atr_period', 14)]  # Include ATR period
-
-    return {
-        'sma_short': sma_short,
-        'sma_long': sma_long,
-        'ema_periods': ema_periods_unique,
-        'stoch_k_periods': stoch_k_periods_unique,
-        'stoch_d_periods': stoch_d_periods_unique,
-        'rsi_periods': rsi_periods_unique,
-        'bb_periods': bb_periods_unique,
-        'bb_num_std': bb_num_std_unique,
-        'macd_fast': macd_fast_unique,
-        'macd_slow': macd_slow_unique,
-        'macd_signal': macd_signal_unique,
-        'atr_periods': atr_periods_unique
-    }
-
-
-
-def adjust_indicator_periods(params, timeframe):
-    timeframe_multipliers = {
-        '1min': 1,
-        '5min': 5,
-        '15min': 15,
-        '30min': 30,
-        '1h': 60,
-        '2h': 120,
-    }
-    multiplier = timeframe_multipliers[timeframe]
-    adjusted_params = params.copy()
-    adjusted_params['sma_periods'] = (
-        int(params['sma_periods'][0] / multiplier),
-        int(params['sma_periods'][1] / multiplier)
-    )
-    # Adjust other periods similarly
-    return adjusted_params
-
-def get_time_series_folds(data, k):
-    fold_size = len(data) // k
-    remainder = len(data) % k
-    folds = []
-    start = 0
-    for i in range(k):
-        extra = 1 if i < remainder else 0
-        end = start + fold_size + extra
-        folds.append(data.iloc[start:end])
-        start = end
-    return folds
+    return indicator_params
