@@ -194,8 +194,8 @@ def precompute_data(
     support_resistance_columns = {}
     for timeframe in support_resistance_timeframes:
         for window in support_resistance_windows:
-            support_levels = resampled_data['low'].rolling(window=window).min().reindex(data.index, method='ffill').values
-            resistance_levels = resampled_data['high'].rolling(window=window).max().reindex(data.index, method='ffill').values
+            support_levels = resampled_data['low'].rolling(window=window).min().reindex(resampled_data.index, method='ffill').values
+            resistance_levels = resampled_data['high'].rolling(window=window).max().reindex(resampled_data.index, method='ffill').values
 
             # Handle NaN values by setting to the overall min and max
             min_low = data['low'].min()
