@@ -178,8 +178,8 @@ def objective(trial):
     atr_period = trial.suggest_int('atr_period', 7, 21)
     
     # New parameters for Support and Resistance
-    support_resistance_timeframe = trial.suggest_categorical('support_resistance_timeframe', ['1H', '4H', '1D'])
-    support_resistance_window = trial.suggest_int('support_resistance_window', 10, 50, step=10)
+    support_resistance_timeframe = trial.suggest_categorical('support_resistance_timeframe', ['30m', '1h', '4h', '1d'])
+    support_resistance_window = trial.suggest_int('support_resistance_window', 10, 200, step=10)
 
     # Add multiple timeframes if desired
     timeframes = ['1min', '3min', '5min', '15min', '30min', '1h', '2h', '4h']
