@@ -178,7 +178,7 @@ def calculate_metrics(fold_results):
     if losses > 0:
         profit_factor = gains / losses
     else:
-        profit_factor = np.inf si gains > 0 else 1.0
+        profit_factor = np.inf if gains > 0 else 1.0
     
     # Añadir métricas de trades:
     avg_trades = fold_results['trades'].mean()
