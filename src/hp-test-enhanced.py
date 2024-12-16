@@ -30,8 +30,8 @@ def run_walk_forward_backtest(data, params, precomputed_data, n_splits=4):
         support_key = f'support_levels_{support_resistance_timeframe}_{support_resistance_window}'
         resistance_key = f'resistance_levels_{support_resistance_timeframe}_{support_resistance_window}'
         
-        support_levels = data_dict[support_key]
-        resistance_levels = data_dict[resistance_key]
+        support_levels = data_dict['test'][support_key]
+        resistance_levels = data_dict['test'][resistance_key]
 
         # Retrieve higher timeframe EMA
         higher_tf_ema_key = f'ema_{params["ema_period"]}'
@@ -85,8 +85,8 @@ def run_walk_forward_backtest(data, params, precomputed_data, n_splits=4):
         for data_slice in slices:
             data_slice = data_slice.dropna()
 
-            # Ensure the slice indices align with the pre-extracted arrays
-            # (Assuming slices are contiguous and aligned)
+            # Ensure the slice indices align con las matrices preextraídas
+            # (Asumiendo que las slices son contiguas y alineadas)
 
             final_balance, trades = trading_strategy_enhanced(
                 close=data_slice['close'].values,
@@ -146,41 +146,41 @@ def run_walk_forward_backtest(data, params, precomputed_data, n_splits=4):
 
 def calculate_metrics(fold_results):
     """
-    Given a DataFrame of fold results with columns 'roi' and 'trades',
+    Given a DataFrame of fold results with columns 'roi' y 'trades',
     compute additional metrics: Sharpe ratio, max drawdown, profit factor, etc.
     """
     # Extract ROI series
     rois = fold_results['roi'].values
     
     # Sharpe Ratio:
-    # We treat each fold's ROI as one period's return. For simplicity, assume zero risk-free rate.
+    # Tratamos cada ROI de fold como el retorno de un período. Para simplificar, asumimos una tasa libre de riesgo de cero.
     if len(rois) > 1:
         mean_roi = np.mean(rois)
         std_roi = np.std(rois, ddof=1)
         sharpe = mean_roi / (std_roi + 1e-9)
     else:
-        # With only one fold, Sharpe ratio doesn't make much sense
+        # Con solo un fold, el Sharpe ratio no tiene mucho sentido
         sharpe = np.nan
-
+    
     # Max Drawdown:
-    # Convert ROI folds into a cumulative growth factor sequence (1 + roi/100)
-    # Then compute drawdown.
+    # Convertir los folds de ROI en una secuencia de factores de crecimiento acumulativos (1 + roi/100)
+    # Luego calcular el drawdown.
     growth_factors = 1 + (rois / 100.0)
     cumulative = np.cumprod(growth_factors)
     peak = np.maximum.accumulate(cumulative)
     drawdown = (cumulative - peak) / peak
-    max_drawdown = drawdown.min() * 100.0  # in percentage
-
+    max_drawdown = drawdown.min() * 100.0  # en porcentaje
+    
     # Profit Factor:
-    # Approximate profits and losses from roi of each fold
+    # Aproximar ganancias y pérdidas a partir del ROI de cada fold
     gains = rois[rois > 0].sum()
     losses = -rois[rois < 0].sum()
     if losses > 0:
         profit_factor = gains / losses
     else:
-        profit_factor = np.inf if gains > 0 else 1.0
-
-    # Add trades metrics:
+        profit_factor = np.inf si gains > 0 else 1.0
+    
+    # Añadir métricas de trades:
     avg_trades = fold_results['trades'].mean()
     total_trades = fold_results['trades'].sum()
     
@@ -193,11 +193,11 @@ def calculate_metrics(fold_results):
         'average_trades': avg_trades,
         'total_trades': total_trades
     }
-
+    
     return metrics
 
 def objective(trial, precomputed_data):
-    # Suggest parameters as before
+    # Sugerir parámetros como antes
     sma_short = trial.suggest_int('sma_short', 5, 50, step=5)
     sma_long = trial.suggest_int('sma_long', 50, 200, step=10)
     if sma_short >= sma_long:
@@ -226,11 +226,11 @@ def objective(trial, precomputed_data):
     stoch_threshold_high = trial.suggest_float('stoch_threshold_high', 70, 90)
     atr_period = trial.suggest_int('atr_period', 7, 21)
     
-    # New parameters for Support and Resistance
+    # Nuevos parámetros para Soporte y Resistencia
     support_resistance_timeframe = trial.suggest_categorical('support_resistance_timeframe', ['30m', '1h', '4h', '1d'])
     support_resistance_window = trial.suggest_int('support_resistance_window', 10, 200, step=10)
 
-    # Add multiple timeframes if desired
+    # Añadir múltiples timeframes si se desea
     timeframes = ['1min', '3min', '5min', '15min', '30min', '1h', '2h', '4h']
     timeframe = trial.suggest_categorical('timeframe', timeframes)
 
@@ -277,13 +277,13 @@ def objective(trial, precomputed_data):
         print(f"KeyError encountered: {e}")
         raise optuna.exceptions.TrialPruned()
 
-    # Calculate metrics
+    # Calcular métricas
     metrics = calculate_metrics(fold_results)
 
-    # For optimization, let's use the Sharpe ratio as the primary metric
-    # The optimizer tries to maximize the Sharpe ratio, so return it directly
+    # Para la optimización, usaremos el Sharpe ratio como métrica principal
+    # El optimizador intenta maximizar el Sharpe ratio, así que devuélvelo directamente
     if np.isnan(metrics['sharpe_ratio']):
-        return float('-inf')  # Treat as worst if Sharpe ratio is not available
+        return float('-inf')  # Tratar como peor si el Sharpe ratio no está disponible
 
     return metrics['sharpe_ratio']
 
@@ -291,10 +291,10 @@ if __name__ == '__main__':
     study = optuna.create_study(direction='maximize')
     n_jobs = multiprocessing.cpu_count() - 1
 
-    # Collect all indicator parameters based on Optuna search space
+    # Coleccionar todos los parámetros de indicadores basados en el espacio de búsqueda de Optuna
     indicator_params = collect_all_indicator_params()
 
-    # Precompute indicators for all walk-forward splits and all possible parameter values
+    # Precalcular indicadores para todos los splits de walk-forward y todos los posibles valores de parámetros
     n_splits = 4
     folds = walk_forward_splits(data, n_splits=n_splits, train_size=0.7)
     precomputed_data = []
@@ -337,13 +337,13 @@ if __name__ == '__main__':
                 print(f"KeyError encountered during final backtest: {e}")
                 final_metrics = {}
             
-            # Get the top 100 best trials
+            # Obtener los 100 mejores trials
             sorted_trials = sorted(
                 study.trials, key=lambda t: t.value if t.value is not None else float('-inf'), reverse=True
             )
             top_100 = sorted_trials[:100]
 
-            # Save the top 100 trials to a JSON file
+            # Guardar los 100 mejores trials en un archivo JSON
             now = datetime.now()
             filename = f"src/results/backtest_{now.strftime('%Y%m%d_%H%M')}.json"
             top_100_results = [

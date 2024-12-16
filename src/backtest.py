@@ -44,8 +44,8 @@ def backtest_strategy(data_dict, param_grid, timeframes, num_slices=5, slice_len
             atr_dict = {}
             stoch_k_dict = {}
             stoch_d_dict = {}
-            support_levels = data_dict['support_levels']
-            resistance_levels = data_dict['resistance_levels']
+            support_levels = data_dict['test']['support_levels']  # Actualización aquí
+            resistance_levels = data_dict['test']['resistance_levels']  # Actualización aquí
 
             # Pre-extract columns for all parameter combinations
             for params in param_combinations:
@@ -105,13 +105,10 @@ def backtest_strategy(data_dict, param_grid, timeframes, num_slices=5, slice_len
                 for data_slice in slices:
                     data_slice = data_slice.dropna()
 
-                    # Ensure the slice indices align with the pre-extracted arrays
-                    # (Assuming slices are contiguous and aligned)
-
                     # Retrieve support and resistance levels
-                    # Already extracted outside the loop
+                    # Ya extraídos anteriormente
 
-                    # Ensure correct argument order as per the trading_strategy signature
+                    # Asegurar el orden correcto de argumentos según la firma de la función trading_strategy
                     final_balance, trades = trading_strategy(
                         close,
                         high,
@@ -164,8 +161,8 @@ def backtest_strategy_hp(data_dict, param_list, timeframes, num_slices=5, slice_
         close_all = resampled_data['close'].values
         high_all = resampled_data['high'].values
         low_all = resampled_data['low'].values
-        support_levels = data_dict['support_levels']
-        resistance_levels = data_dict['resistance_levels']
+        support_levels = data_dict['test']['support_levels']  # Actualización aquí
+        resistance_levels = data_dict['test']['resistance_levels']  # Actualización aquí
 
         # Pre-extract indicators for all params
         indicator_data = {}
@@ -227,8 +224,9 @@ def backtest_strategy_hp(data_dict, param_list, timeframes, num_slices=5, slice_
             data_slice = data_slice.dropna()
             
             # Retrieve support and resistance levels
+            # Ya extraídos anteriormente
 
-            # Ensure correct argument order as per the trading_strategy signature
+            # Asegurar el orden correcto de argumentos según la firma de la función trading_strategy
             final_balance, trades = trading_strategy(
                 close_all,
                 high_all,
