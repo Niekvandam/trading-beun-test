@@ -253,8 +253,7 @@ if __name__ == '__main__':
         })
         data_dict = precompute_data(
             test_data, 
-            [indicator_params['sma_periods'][0]],  # Assuming single timeframe for simplicity
-            indicator_params, 
+            indicator_params,  # Corrected: Removed [indicator_params['sma_periods'][0]]
             '1h', 
             30
         )
